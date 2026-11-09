@@ -11,17 +11,17 @@ A Vicinae version of Raycast's Screen OCR extension, built for GNOME on Wayland 
 
 ## How it works
 
-GNOME Wayland blocks direct screen capture. The extension uses `gnome-screenshot`, which GNOME Shell
-allows to capture and gives a simple drag-to-select. If it isn't installed, the extension falls back to the
-**XDG desktop portal** (`org.freedesktop.portal.Screenshot`) via a small Python/GObject helper
-(`assets/portal-screenshot.py`).
+GNOME Wayland blocks direct screen capture, so the extension asks for a screenshot through the
+**XDG desktop portal** (`org.freedesktop.portal.Screenshot`), using a small Python/GObject helper
+(`assets/portal-screenshot.py`). In area mode this opens GNOME's own screenshot UI. If the portal
+fails, it falls back to `gnome-screenshot`, whose area selection doesn't work on every GNOME version.
 Text recognition is done locally by **Tesseract**. Nothing leaves your machine.
 
 ## Install
 
 ```bash
 # OCR engine (add more languages as needed, e.g. tesseract-ocr-deu / -fra / -ita)
-sudo apt install tesseract-ocr tesseract-ocr-eng gnome-screenshot wl-clipboard
+sudo apt install tesseract-ocr tesseract-ocr-eng python3-gi wl-clipboard
 # optional: better accuracy (2x upscale) and QR / barcode support
 sudo apt install imagemagick zbar-tools
 
@@ -38,11 +38,11 @@ To bind a hotkey, open Vicinae settings → Extensions → Screen OCR → Recogn
 
 - **Languages**: Tesseract language codes, e.g. `eng+deu`. Each one needs its `tesseract-ocr-<lang>` package.
 - **Line Breaks**: keep the image's line breaks, or join wrapped lines into paragraphs.
-- **Capture Method**: Auto (`gnome-screenshot`, with the portal as fallback), `gnome-screenshot` only, or Portal only.
+- **Capture Method**: Auto (portal, with `gnome-screenshot` as fallback), Portal only, or `gnome-screenshot` only.
 - **Upscale**: enlarge area captures 2x before OCR. This needs ImageMagick and helps a lot with small UI text.
-- **Screenshots**: only for the portal method, which saves captures in `~/Pictures`. By default they're deleted after OCR.
+- **Screenshots**: the portal saves captures in `~/Pictures`. By default they're deleted after OCR.
 
 ## Notes
 
-- To test capture outside Vicinae, run `gnome-screenshot -a -f /tmp/test.png`.
-- The portal method needs `python3-gi`. The first fullscreen capture through the portal shows a GNOME permission prompt; allow it once.
+- To test capture outside Vicinae, run `python3 assets/portal-screenshot.py --interactive`. It prints the screenshot's file path on success.
+- The first fullscreen capture through the portal shows a GNOME permission prompt; allow it once.

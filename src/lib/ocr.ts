@@ -114,17 +114,18 @@ async function imageFromClipboard(dir: string): Promise<string> {
 }
 
 async function capture(mode: Mode, method: CaptureMethod, dir: string): Promise<{ path: string; temporary: boolean }> {
-  // gnome-screenshot is preferred: its drag-to-select returns directly and never touches ~/Pictures.
-  // The portal's interactive mode hands off to GNOME Shell's screenshot UI, which is less predictable.
-  if (method === "gnome-screenshot" || (method === "auto" && which("gnome-screenshot"))) {
-    try {
-      return { path: await captureWithGnomeScreenshot(mode, dir), temporary: true };
-    } catch (error) {
-      if (error instanceof CancelledError || method !== "auto" || !which("python3")) throw error;
-      log("falling back to the XDG desktop portal:", error instanceof Error ? error.message : error);
-    }
+  // The XDG portal is the supported way to capture on GNOME Wayland. gnome-screenshot's area
+  // selection relies on a private GNOME Shell API that does not work on some newer GNOME versions.
+  if (method === "gnome-screenshot") {
+    return { path: await captureWithGnomeScreenshot(mode, dir), temporary: true };
   }
-  return { path: await captureWithPortal(mode), temporary: false };
+  try {
+    return { path: await captureWithPortal(mode), temporary: false };
+  } catch (error) {
+    if (error instanceof CancelledError || method !== "auto" || !which("gnome-screenshot")) throw error;
+    log("portal failed, falling back to gnome-screenshot:", error instanceof Error ? error.message : error);
+    return { path: await captureWithGnomeScreenshot(mode, dir), temporary: true };
+  }
 }
 
 /** Enlarge + grayscale the image; Tesseract is far more accurate on 2x screen text. */
@@ -179,7 +180,7 @@ function missingDependencies(task: "text" | "barcode", method: CaptureMethod, so
   }
   if (method === "gnome-screenshot" && !which("gnome-screenshot")) missing.push("gnome-screenshot");
   if (method === "portal" && !which("python3")) missing.push("python3-gi");
-  if (method === "auto" && !which("gnome-screenshot") && !which("python3")) missing.push("gnome-screenshot");
+  if (method === "auto" && !which("python3") && !which("gnome-screenshot")) missing.push("python3-gi");
   return missing;
 }
 

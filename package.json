@@ -24,7 +24,7 @@
     "Linux"
   ],
   "license": "MIT",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "commands": [
     {
       "name": "recognize-text",
@@ -101,7 +101,7 @@
       "name": "captureMethod",
       "type": "dropdown",
       "title": "Capture Method",
-      "description": "How screenshots are taken. Auto uses gnome-screenshot (simple drag-to-select) and falls back to the XDG desktop portal if it is not installed.",
+      "description": "How screenshots are taken. Auto uses the XDG desktop portal (GNOME's screenshot UI) and falls back to gnome-screenshot if the portal fails.",
       "required": false,
       "default": "auto",
       "data": [
@@ -133,7 +133,7 @@
       "type": "checkbox",
       "title": "Screenshots",
       "label": "Keep the screenshot file",
-      "description": "Only applies to the portal capture method, which saves captures to your Pictures folder. When off, the file is deleted after recognition.",
+      "description": "The portal saves captures to your Pictures folder. When off, the file is deleted after recognition.",
       "required": false,
       "default": false
     }
