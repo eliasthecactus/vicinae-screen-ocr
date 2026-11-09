@@ -43,18 +43,23 @@ function which(bin: string): string | undefined {
   return undefined;
 }
 
+const log = (...args: unknown[]) => console.log("[screen-ocr]", ...args);
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function captureWithPortal(mode: Mode): Promise<string> {
   const script = join(environment.assetsPath, "portal-screenshot.py");
   const args = [script, ...(mode === "area" ? ["--interactive"] : [])];
+  log("running: python3", args.join(" "));
   try {
-    const { stdout } = await run("python3", args, { env: ENV, timeout: 200_000 });
+    const { stdout, stderr } = await run("python3", args, { env: ENV, timeout: 200_000 });
+    log("portal stdout:", JSON.stringify(stdout), "stderr:", JSON.stringify(stderr));
     const path = stdout.trim();
     if (!path) throw new Error("Portal returned no file");
     return path;
   } catch (error) {
     const err = error as { code?: number; stderr?: string; message: string };
+    log("portal failed: code", err.code, "stderr:", JSON.stringify(err.stderr), "message:", err.message);
     if (err.code === 1) throw new CancelledError();
     throw new Error(err.stderr?.trim() || err.message);
   }
@@ -63,17 +68,23 @@ async function captureWithPortal(mode: Mode): Promise<string> {
 async function captureWithGnomeScreenshot(mode: Mode, dir: string): Promise<string> {
   const file = join(dir, "capture.png");
   const args = [...(mode === "area" ? ["-a"] : []), "-f", file];
+  log("running: gnome-screenshot", args.join(" "));
+  const started = Date.now();
+  let output = "";
   try {
-    await run("gnome-screenshot", args, { env: ENV, timeout: 200_000 });
+    const { stdout, stderr } = await run("gnome-screenshot", args, { env: ENV, timeout: 200_000 });
+    output = `${stdout}${stderr}`.trim();
   } catch (error) {
-    // gnome-screenshot exits non-zero when the selection is cancelled with Esc.
-    if (!existsSync(file)) {
-      console.error("gnome-screenshot:", (error as { stderr?: string }).stderr ?? error);
-      throw new CancelledError();
-    }
+    const err = error as { code?: number; stdout?: string; stderr?: string; message: string };
+    output = `${err.stdout ?? ""}${err.stderr ?? ""}`.trim() || err.message;
   }
-  if (!existsSync(file)) throw new CancelledError();
-  return file;
+  const elapsed = Date.now() - started;
+  log(`gnome-screenshot finished after ${elapsed} ms, file exists: ${existsSync(file)}, output: ${JSON.stringify(output)}`);
+  if (existsSync(file)) return file;
+  // Returning within a second without a file means the selection UI never appeared:
+  // treat that as a failure, not as the user pressing Esc.
+  if (elapsed < 1000) throw new Error(`gnome-screenshot failed: ${output || "no selection UI appeared"}`);
+  throw new CancelledError();
 }
 
 /** Save the image currently on the clipboard (e.g. from GNOME's Print Screen UI) to a file. */
@@ -106,7 +117,12 @@ async function capture(mode: Mode, method: CaptureMethod, dir: string): Promise<
   // gnome-screenshot is preferred: its drag-to-select returns directly and never touches ~/Pictures.
   // The portal's interactive mode hands off to GNOME Shell's screenshot UI, which is less predictable.
   if (method === "gnome-screenshot" || (method === "auto" && which("gnome-screenshot"))) {
-    return { path: await captureWithGnomeScreenshot(mode, dir), temporary: true };
+    try {
+      return { path: await captureWithGnomeScreenshot(mode, dir), temporary: true };
+    } catch (error) {
+      if (error instanceof CancelledError || method !== "auto" || !which("python3")) throw error;
+      log("falling back to the XDG desktop portal:", error instanceof Error ? error.message : error);
+    }
   }
   return { path: await captureWithPortal(mode), temporary: false };
 }
@@ -161,8 +177,9 @@ function missingDependencies(task: "text" | "barcode", method: CaptureMethod, so
     if (!which("wl-paste")) missing.push("wl-clipboard");
     return missing;
   }
-  if (method !== "portal" && !which("gnome-screenshot")) missing.push("gnome-screenshot");
+  if (method === "gnome-screenshot" && !which("gnome-screenshot")) missing.push("gnome-screenshot");
   if (method === "portal" && !which("python3")) missing.push("python3-gi");
+  if (method === "auto" && !which("gnome-screenshot") && !which("python3")) missing.push("gnome-screenshot");
   return missing;
 }
 
@@ -170,9 +187,19 @@ type Source = "screen" | "clipboard";
 
 export async function runOcr(options: { mode: Mode; task: "text" | "barcode"; source?: Source }): Promise<void> {
   const source = options.source ?? "screen";
+  log("start", JSON.stringify(options), {
+    WAYLAND_DISPLAY: process.env.WAYLAND_DISPLAY,
+    DISPLAY: process.env.DISPLAY,
+    DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS,
+    XDG_CURRENT_DESKTOP: process.env.XDG_CURRENT_DESKTOP,
+    gnomeScreenshot: which("gnome-screenshot"),
+    python3: which("python3"),
+    tesseract: which("tesseract"),
+  });
   const prefs = getPreferenceValues<Preferences>();
   const method = prefs.captureMethod ?? "auto";
   const language = (prefs.language ?? "").trim() || "eng";
+  log("preferences", JSON.stringify(prefs));
 
   // Check dependencies while the launcher is still open so the toast is visible.
   const missing = missingDependencies(options.task, method, source);
