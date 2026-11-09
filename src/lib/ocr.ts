@@ -43,7 +43,10 @@ function which(bin: string): string | undefined {
   return undefined;
 }
 
-const log = (...args: unknown[]) => console.log("[screen-ocr]", ...args);
+// Diagnostic output, only shown when running with `npm run dev`.
+const log = (...args: unknown[]) => {
+  if (environment.isDevelopment) console.log("[screen-ocr]", ...args);
+};
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
