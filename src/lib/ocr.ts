@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, unlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
@@ -63,21 +63,52 @@ async function captureWithPortal(mode: Mode): Promise<string> {
 async function captureWithGnomeScreenshot(mode: Mode, dir: string): Promise<string> {
   const file = join(dir, "capture.png");
   const args = [...(mode === "area" ? ["-a"] : []), "-f", file];
-  await run("gnome-screenshot", args, { env: ENV, timeout: 200_000 });
+  try {
+    await run("gnome-screenshot", args, { env: ENV, timeout: 200_000 });
+  } catch (error) {
+    // gnome-screenshot exits non-zero when the selection is cancelled with Esc.
+    if (!existsSync(file)) {
+      console.error("gnome-screenshot:", (error as { stderr?: string }).stderr ?? error);
+      throw new CancelledError();
+    }
+  }
   if (!existsSync(file)) throw new CancelledError();
   return file;
 }
 
+/** Save the image currently on the clipboard (e.g. from GNOME's Print Screen UI) to a file. */
+async function imageFromClipboard(dir: string): Promise<string> {
+  if (which("wl-paste")) {
+    const { stdout: types } = await run("wl-paste", ["--list-types"], { env: ENV, timeout: 10_000 }).catch(() => ({
+      stdout: "",
+    }));
+    const available = types.split("\n").map((t) => t.trim());
+    const type = available.includes("image/png") ? "image/png" : available.find((t) => t.startsWith("image/"));
+    if (type) {
+      const file = join(dir, "clipboard.png");
+      const { stdout } = await run("wl-paste", ["--no-newline", "--type", type], {
+        env: ENV,
+        timeout: 10_000,
+        encoding: "buffer",
+        maxBuffer: 256 * 1024 * 1024,
+      });
+      writeFileSync(file, stdout);
+      return file;
+    }
+  }
+  // Fallback: a copied image *file* (e.g. from Files).
+  const { file } = await Clipboard.read();
+  if (file && /\.(png|jpe?g|webp|bmp|tiff?|gif)$/i.test(file) && existsSync(file)) return file;
+  throw new Error("No image on the clipboard. Press Print Screen, select an area, then run this again.");
+}
+
 async function capture(mode: Mode, method: CaptureMethod, dir: string): Promise<{ path: string; temporary: boolean }> {
-  if (method === "gnome-screenshot") {
+  // gnome-screenshot is preferred: its drag-to-select returns directly and never touches ~/Pictures.
+  // The portal's interactive mode hands off to GNOME Shell's screenshot UI, which is less predictable.
+  if (method === "gnome-screenshot" || (method === "auto" && which("gnome-screenshot"))) {
     return { path: await captureWithGnomeScreenshot(mode, dir), temporary: true };
   }
-  try {
-    return { path: await captureWithPortal(mode), temporary: false };
-  } catch (error) {
-    if (error instanceof CancelledError || method === "portal" || !which("gnome-screenshot")) throw error;
-    return { path: await captureWithGnomeScreenshot(mode, dir), temporary: true };
-  }
+  return { path: await captureWithPortal(mode), temporary: false };
 }
 
 /** Enlarge + grayscale the image; Tesseract is far more accurate on 2x screen text. */
@@ -122,22 +153,29 @@ async function decodeBarcode(image: string): Promise<string> {
   }
 }
 
-function missingDependencies(task: "text" | "barcode", method: CaptureMethod): string[] {
+function missingDependencies(task: "text" | "barcode", method: CaptureMethod, source: Source): string[] {
   const missing: string[] = [];
   if (task === "text" && !which("tesseract")) missing.push("tesseract-ocr");
   if (task === "barcode" && !which("zbarimg")) missing.push("zbar-tools");
-  if (method === "gnome-screenshot" && !which("gnome-screenshot")) missing.push("gnome-screenshot");
-  if (method !== "gnome-screenshot" && !which("python3")) missing.push("python3-gi");
+  if (source === "clipboard") {
+    if (!which("wl-paste")) missing.push("wl-clipboard");
+    return missing;
+  }
+  if (method !== "portal" && !which("gnome-screenshot")) missing.push("gnome-screenshot");
+  if (method === "portal" && !which("python3")) missing.push("python3-gi");
   return missing;
 }
 
-export async function runOcr(options: { mode: Mode; task: "text" | "barcode" }): Promise<void> {
+type Source = "screen" | "clipboard";
+
+export async function runOcr(options: { mode: Mode; task: "text" | "barcode"; source?: Source }): Promise<void> {
+  const source = options.source ?? "screen";
   const prefs = getPreferenceValues<Preferences>();
   const method = prefs.captureMethod ?? "auto";
   const language = (prefs.language ?? "").trim() || "eng";
 
   // Check dependencies while the launcher is still open so the toast is visible.
-  const missing = missingDependencies(options.task, method);
+  const missing = missingDependencies(options.task, method, source);
   if (missing.length > 0) {
     await showToast({
       style: Toast.Style.Failure,
@@ -149,12 +187,15 @@ export async function runOcr(options: { mode: Mode; task: "text" | "barcode" }):
 
   // Hide the launcher so it does not end up in the screenshot.
   await closeMainWindow();
-  await sleep(250);
+  if (source === "screen") await sleep(300);
 
   const workDir = mkdtempSync(join(tmpdir(), "vicinae-ocr-"));
   let shot: { path: string; temporary: boolean } | undefined;
   try {
-    shot = await capture(options.mode, method, workDir);
+    shot =
+      source === "clipboard"
+        ? { path: await imageFromClipboard(workDir), temporary: true }
+        : await capture(options.mode, method, workDir);
 
     if (options.task === "barcode") {
       const result = (await decodeBarcode(shot.path)).trim();

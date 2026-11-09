@@ -7,11 +7,24 @@
   "author": "eliasthecactus",
   "contributors": [],
   "pastContributors": [],
-  "categories": ["Productivity", "Developer Tools"],
-  "keywords": ["ocr", "text", "screenshot", "tesseract", "recognize", "qr", "barcode"],
-  "platforms": ["Linux"],
+  "categories": [
+    "Productivity",
+    "Developer Tools"
+  ],
+  "keywords": [
+    "ocr",
+    "text",
+    "screenshot",
+    "tesseract",
+    "recognize",
+    "qr",
+    "barcode"
+  ],
+  "platforms": [
+    "Linux"
+  ],
   "license": "MIT",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "commands": [
     {
       "name": "recognize-text",
@@ -19,7 +32,25 @@
       "subtitle": "Screen OCR",
       "description": "Select an area of the screen and copy the recognized text",
       "mode": "no-view",
-      "keywords": ["ocr", "area", "select", "copy text"]
+      "keywords": [
+        "ocr",
+        "area",
+        "select",
+        "copy text"
+      ]
+    },
+    {
+      "name": "recognize-text-clipboard",
+      "title": "Recognize Text from Clipboard",
+      "subtitle": "Screen OCR",
+      "description": "Run OCR on the image in the clipboard (e.g. after Print Screen) and copy the text",
+      "mode": "no-view",
+      "keywords": [
+        "ocr",
+        "clipboard",
+        "print screen",
+        "image"
+      ]
     },
     {
       "name": "recognize-text-fullscreen",
@@ -27,7 +58,11 @@
       "subtitle": "Screen OCR",
       "description": "Capture the whole screen and copy the recognized text",
       "mode": "no-view",
-      "keywords": ["ocr", "fullscreen", "screen"]
+      "keywords": [
+        "ocr",
+        "fullscreen",
+        "screen"
+      ]
     },
     {
       "name": "detect-barcode",
@@ -35,7 +70,12 @@
       "subtitle": "Screen OCR",
       "description": "Select an area of the screen and copy the decoded QR code or barcode",
       "mode": "no-view",
-      "keywords": ["qr", "barcode", "scan", "zbar"]
+      "keywords": [
+        "qr",
+        "barcode",
+        "scan",
+        "zbar"
+      ]
     }
   ],
   "preferences": [
@@ -61,13 +101,22 @@
       "name": "captureMethod",
       "type": "dropdown",
       "title": "Capture Method",
-      "description": "How screenshots are taken. Auto uses the XDG desktop portal (GNOME's screenshot UI) and falls back to gnome-screenshot.",
+      "description": "How screenshots are taken. Auto uses gnome-screenshot (simple drag-to-select) and falls back to the XDG desktop portal if it is not installed.",
       "required": false,
       "default": "auto",
       "data": [
-        { "title": "Auto", "value": "auto" },
-        { "title": "XDG Desktop Portal", "value": "portal" },
-        { "title": "gnome-screenshot", "value": "gnome-screenshot" }
+        {
+          "title": "Auto",
+          "value": "auto"
+        },
+        {
+          "title": "XDG Desktop Portal",
+          "value": "portal"
+        },
+        {
+          "title": "gnome-screenshot",
+          "value": "gnome-screenshot"
+        }
       ]
     },
     {
@@ -84,7 +133,7 @@
       "type": "checkbox",
       "title": "Screenshots",
       "label": "Keep the screenshot file",
-      "description": "The portal saves captures to your Pictures folder. When off, the file is deleted after recognition.",
+      "description": "Only applies to the portal capture method, which saves captures to your Pictures folder. When off, the file is deleted after recognition.",
       "required": false,
       "default": false
     }
